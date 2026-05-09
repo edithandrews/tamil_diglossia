@@ -1,0 +1,18 @@
+torch>=2.2.0
+transformers>=4.40.0
+datasets>=2.19.0
+peft>=0.11.0
+accelerate>=0.30.0
+bitsandbytes>=0.43.0           # 4-bit NF4 quantization for QLoRA
+scikit-learn>=1.4.0
+numpy>=1.26.0
+tqdm>=4.66.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+torchao>=0.16.0
+aksharamukha                   # Tamil-script -> ISO romanization
+requests>=2.31.0               # Sarvam Mayura API client
+sacrebleu>=2.4.0               # chrF / BLEU
+pandas>=2.2.0
+matplotlib>=3.8.0              # results figure (writeup/figures/results_main.pdf)
+streamlit>=1.56.0              # audit_review_app.py
