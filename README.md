@@ -48,6 +48,7 @@ Main experiment results (mBART, mixed3000 training set):
 
 ```text
 outputs/mbart/mixed3000/results.csv
+outputs/mbart/mixed3000/chrf_scores.csv   # normalized chrF/BLEU vs. human refs and teacher
 ```
 
 Supporting experiments:
@@ -77,7 +78,8 @@ outputs/decoder/mixed3000_qwen05/results.csv
 │   └── 02_decoder_qwen_lora.ipynb     # decoder-only Qwen LoRA comparison
 │
 ├── scripts/                     # helper scripts (not required to reproduce)
-│   ├── classify_teacher_outputs.py
+│   ├── compute_chrf.py          # normalized chrF/BLEU vs. human refs and teacher
+│   ├── sanity_check_teacher_outputs.py
 │   ├── smoke_test.py
 │   ├── train_decoder_student.py
 │   ├── audit_review_app.py

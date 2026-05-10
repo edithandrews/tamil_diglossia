@@ -1,0 +1,8 @@
+condition,chrF_vs_ref,BLEU_vs_ref,chrF_vs_teacher,BLEU_vs_teacher
+adapter,27.04,0.48,22.93,1.32
+baseline_zeroshot,26.77,0.48,20.65,0.77
+full,26.09,0.47,66.97,10.69
+lora,23.41,0.22,59.05,7.77
+lora_r16,23.53,0.2,52.33,6.13
+lora_r8,23.49,0.21,49.33,5.31
+qlora,23.2,0.38,56.71,7.68
