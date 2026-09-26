@@ -14,6 +14,8 @@ Usage:
   python train_student.py --regime adapter --size 3000
   python train_student.py --regime full --size 3000
   python train_student.py --regime baseline_zeroshot
+  python train_student.py --regime adapter --size 3000 --learning-rate 3e-3 --expect-params 172032
+  python train_student.py --regime lora --size 3000 --lora-rank 1 --lora-target-modules k_proj v_proj
 """
 
 import argparse
@@ -47,6 +49,7 @@ TATOEBA_TRAIN_PATH    = OUTPUT_DIR / "data" / "tatoeba_train.jsonl"
 TATOEBA_TEST_PATH     = OUTPUT_DIR / "data" / "tatoeba_test.jsonl"
 MAX_SRC_LEN = 128
 MAX_TGT_LEN = 128
+DEFAULT_LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "out_proj"]
 
 
 def _load_model(model_path: str | None = None, quantize_4bit: bool = False):
@@ -133,14 +136,19 @@ def load_trained_model(out_dir: Path, regime: str):
     return _load_model(checkpoint)
 
 
-def get_peft_config(regime: str, lora_rank: int = 32, lora_alpha: int | None = None):
+def get_peft_config(
+    regime: str,
+    lora_rank: int = 32,
+    lora_alpha: int | None = None,
+    lora_targets: list[str] | None = None,
+):
     if regime in ("lora", "qlora"):
         return LoraConfig(
             task_type=TaskType.SEQ_2_SEQ_LM,
             r=lora_rank,
             lora_alpha=lora_alpha if lora_alpha is not None else 2 * lora_rank,
             lora_dropout=0.1,
-            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            target_modules=lora_targets or DEFAULT_LORA_TARGETS,
         )
     if regime == "adapter":
         return IA3Config(
@@ -151,11 +159,25 @@ def get_peft_config(regime: str, lora_rank: int = 32, lora_alpha: int | None = N
     return None
 
 
-def regime_label(regime: str, lora_rank: int) -> str:
-    """Output-folder label. r=32 keeps the canonical 'lora' name; other ranks get a suffix."""
-    if regime == "lora" and lora_rank != 32:
-        return f"lora_r{lora_rank}"
-    return regime
+def regime_label(
+    regime: str,
+    lora_rank: int,
+    learning_rate: float | None = None,
+    lora_targets: list[str] | None = None,
+) -> str:
+    """Output-folder label. Defaults keep the canonical names; non-default settings get suffixes.
+
+    lora r=32 on q/k/v/out -> 'lora'; r=8 -> 'lora_r8'; r=1 on k/v -> 'lora_r1_kv';
+    adapter at lr 3e-3 -> 'adapter_lr3e-03'.
+    """
+    label = regime
+    if regime == "lora" and (lora_rank != 32 or (lora_targets and lora_targets != DEFAULT_LORA_TARGETS)):
+        label = f"lora_r{lora_rank}"
+    if regime == "lora" and lora_targets and lora_targets != DEFAULT_LORA_TARGETS:
+        label += "_" + "".join(m.removesuffix("_proj") for m in lora_targets)
+    if learning_rate is not None:
+        label += f"_lr{learning_rate:.0e}"
+    return label
 
 
 def train(
@@ -166,8 +188,11 @@ def train(
     include_tatoeba_test: bool = False,
     lora_rank: int = 32,
     lora_alpha: int | None = None,
+    lora_targets: list[str] | None = None,
+    learning_rate: float | None = None,
+    expect_params: int | None = None,
 ):
-    label = regime_label(regime, lora_rank)
+    label = regime_label(regime, lora_rank, learning_rate, lora_targets)
     out_dir = experiment_output_dir(label, data_mode, size)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -184,16 +209,25 @@ def train(
         from peft import prepare_model_for_kbit_training
         model = prepare_model_for_kbit_training(model)
 
-    peft_config = get_peft_config(regime, lora_rank=lora_rank, lora_alpha=lora_alpha)
+    peft_config = get_peft_config(regime, lora_rank=lora_rank, lora_alpha=lora_alpha, lora_targets=lora_targets)
     if peft_config:
         model = get_peft_model(model, peft_config)
         model.print_trainable_parameters()
+
+    if expect_params is not None:
+        n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        if n_trainable != expect_params:
+            raise SystemExit(f"Trainable params {n_trainable:,} != expected {expect_params:,}; not training.")
+        print(f"Trainable params match expected: {n_trainable:,}")
 
     corpus = load_irumozhi399_training_data() if data_mode == "irumozhi399" else load_training_data(size)
     train_dataset = tokenize_corpus(corpus, tokenizer)
     collator = DataCollatorForSeq2Seq(tokenizer, model=model, label_pad_token_id=-100)
 
+    # learning_rate is only passed when set, so default runs keep the Trainer default (5e-5).
+    lr_kwargs = {"learning_rate": learning_rate} if learning_rate is not None else {}
     args = Seq2SeqTrainingArguments(
+        **lr_kwargs,
         output_dir=str(out_dir),
         num_train_epochs=3,
         per_device_train_batch_size=4,
@@ -289,6 +323,12 @@ if __name__ == "__main__":
                         help="LoRA rank r (default 32). Other values write to student_lora_r{rank}/.")
     parser.add_argument("--lora-alpha", type=int, default=None,
                         help="LoRA alpha (default = 2 * rank).")
+    parser.add_argument("--lora-target-modules", nargs="+", default=None,
+                        help="LoRA target modules (default q_proj k_proj v_proj out_proj).")
+    parser.add_argument("--learning-rate", type=float, default=None,
+                        help="Learning rate (default: HF Trainer default, 5e-5). Non-default values add an _lr suffix.")
+    parser.add_argument("--expect-params", type=int, default=None,
+                        help="Abort before training unless the trainable parameter count matches exactly.")
     args = parser.parse_args()
 
     if args.data == "mixed" and args.regime != "baseline_zeroshot" and args.size is None:
@@ -296,7 +336,7 @@ if __name__ == "__main__":
 
     if args.generate_only:
         import torch
-        label = regime_label(args.regime, args.lora_rank)
+        label = regime_label(args.regime, args.lora_rank, args.learning_rate, args.lora_target_modules)
         out_dir = experiment_output_dir(label, args.data, args.size)
         tokenizer = _load_tokenizer()
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -311,4 +351,7 @@ if __name__ == "__main__":
             include_tatoeba_test=args.include_tatoeba_test,
             lora_rank=args.lora_rank,
             lora_alpha=args.lora_alpha,
+            lora_targets=args.lora_target_modules,
+            learning_rate=args.learning_rate,
+            expect_params=args.expect_params,
         )

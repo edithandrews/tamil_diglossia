@@ -37,7 +37,10 @@ REGIMES = (
     + ["baseline_zeroshot"]
 )
 IRUMOZHI399_REGIMES = ["lora", "baseline_zeroshot"]
-GROUPED_REGIMES = ["full", "lora", "lora_r16", "lora_r8", "qlora", "adapter", "baseline_zeroshot"]
+GROUPED_REGIMES = [
+    "full", "lora", "lora_r16", "lora_r8", "lora_r2", "lora_r1_kv", "qlora",
+    "adapter", "adapter_lr3e-03", "adapter_lr1e-02", "baseline_zeroshot",
+]
 
 PARAM_COUNTS = {
     **{f"lora_{s}": "~1%" for s in SIZES},
@@ -63,6 +66,10 @@ GROUPED_PARAM_COUNTS = {
     "qlora": "~1.5% (r=32, 4-bit)",
     "adapter": "~0.03%",
     "baseline_zeroshot": "0%",
+    "lora_r2": "589,824 (r=2)",
+    "lora_r1_kv": "147,456 (r=1, k/v only)",
+    "adapter_lr3e-03": "~0.03% (lr 3e-3)",
+    "adapter_lr1e-02": "~0.03% (lr 1e-2)",
 }
 
 
